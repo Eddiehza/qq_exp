@@ -1,23 +1,37 @@
 package proto
 
 import (
-	"bufio"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
 )
 
-const HEAD_LEN = 30
+const HEAD_LEN = 18
+
+const (
+	FLAG_RESERVE = iota
+	FLAG_LOGIN
+	FLAG_SUCCESS
+	FLAG_FAILURE
+	FLAG_UNREACHABLE
+	FLAG_DISCONNECT
+
+	FLAG_TEXT = iota + 11
+	FLAG_FILE
+)
 
 type Msg struct {
 	Length uint64 // 8
-	Flags  uint8  // 1
-	Id     uint8  // 1
+	//消息类型
+	//0~10是系统消息，1是登陆尝试，2是登陆成功，3是登陆失败，4是对方未登陆提示，5是用户断开链接
+	//11是普通文字消息
+	Flags uint8 // 1
 	//若同一个人同时发送多个包，可以使用此序号代表文件
-	Sender   [10]byte // 10
-	Receiver [10]byte // 10
-	Data     []byte   // 4
+	Id       uint8  // 1
+	Sender   uint32 // 4
+	Receiver uint32 // 4
+	Data     []byte // 4
 }
 
 func (msg Msg) Marshal() []byte {
@@ -25,9 +39,9 @@ func (msg Msg) Marshal() []byte {
 	binary.LittleEndian.PutUint64(buf, msg.Length)
 	buf[8] = byte(msg.Flags)
 	buf[9] = byte(msg.Id)
-	copy(buf[10:20], msg.Sender[:])
-	copy(buf[20:30], msg.Receiver[:])
-	copy(buf[30:], msg.Data)
+	binary.LittleEndian.PutUint32(buf[10:14], msg.Sender)
+	binary.LittleEndian.PutUint32(buf[14:18], msg.Receiver)
+	copy(buf[HEAD_LEN:], msg.Data)
 
 	return buf
 }
@@ -36,21 +50,21 @@ func (msg *Msg) Unmarshal(msg_byte []byte) {
 	msg.Length = binary.LittleEndian.Uint64(msg_byte[0:8])
 	msg.Flags = msg_byte[8]
 	msg.Id = msg_byte[9]
-	copy(msg.Sender[:], msg_byte[10:20])
-	copy(msg.Receiver[:], msg_byte[20:30])
+	msg.Sender = binary.LittleEndian.Uint32(msg_byte[10:14])
+	msg.Receiver = binary.LittleEndian.Uint32(msg_byte[14:18])
 	msg.Data = make([]byte, msg.Length-HEAD_LEN)
-	copy(msg.Data, msg_byte[30:])
+	copy(msg.Data, msg_byte[HEAD_LEN:])
 }
 
-func (msg *Msg) Write(conn net.Conn, sender User, receiver User, data []byte) {
+func (msg *Msg) Write(conn net.Conn, senderId uint32, receiverId uint32, data []byte, flag uint8) {
 	msg.Length = uint64(HEAD_LEN + len(data))
-	msg.Flags = 32 //随便设置的，之后改
-	msg.Id = 1     //随便设置的，之后改
-	msg.Sender = sender.Id
-	msg.Receiver = receiver.Id
+	msg.Flags = flag
+	msg.Id = 1 //随便设置的，之后改
+	msg.Sender = senderId
+	msg.Receiver = receiverId
 	msg.Data = data
 	marshal_msg := msg.Marshal()
-	fmt.Printf("发送数据：%+v\n", msg)
+	// fmt.Printf("发送数据：%+v\n", msg)
 	_, err := conn.Write(marshal_msg)
 	if err != nil {
 		fmt.Printf("send failed, err:%v\n", err)
@@ -58,23 +72,34 @@ func (msg *Msg) Write(conn net.Conn, sender User, receiver User, data []byte) {
 	}
 }
 
-func (msg *Msg) Read(conn net.Conn) {
-	reader := bufio.NewReader(conn)
-	buf, err := reader.Peek(8)
-	if err != nil {
-		fmt.Printf("read from conn failed, err:%v\n", err)
-		return
+func (msg *Msg) Read(conn net.Conn) bool {
+	// reader := bufio.NewReader(conn)
+	var buf []byte = make([]byte, 8)
+	for {
+		// var err error
+		// buf, err = reader.Peek(8)
+		_, err := io.ReadFull(conn, buf)
+		// fmt.Println("buf为:", buf)
+		// fmt.Println("转换后:", binary.LittleEndian.Uint64(buf))
+		if err == io.EOF {
+			return false
+		}
+		if err == nil {
+			break
+		}
 	}
 	length := binary.LittleEndian.Uint64(buf)
 	complete_msg := make([]byte, length)
 	for {
-		_, err := io.ReadFull(reader, complete_msg)
+		_, err := io.ReadFull(conn, complete_msg[8:])
 		//need a timeout
 		if err == nil {
 			break
 		}
 	}
+	copy(complete_msg[:8], buf)
+	// fmt.Println(complete_msg)
 	msg.Unmarshal(complete_msg)
-	fmt.Printf("收到的数据：%+v\n", msg)
-	fmt.Printf("收到的消息：%v\n", string(msg.Data))
+	// fmt.Printf("收到的数据：%+v\n", msg)
+	return true
 }

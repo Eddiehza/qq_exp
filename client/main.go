@@ -5,80 +5,122 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"exp/proto"
 )
 
 func main() {
 
-	conn, err := net.Dial("tcp", "127.0.0.1:9090")
+	input := bufio.NewReader(os.Stdin)
+	fmt.Println("服务器地址：")
+	targetIP := ReadFromBufWithoutExit(input)
+	if targetIP == "" {
+		targetIP = "127.0.0.1:9091"
+	}
+
+	fmt.Println(targetIP)
+
+	conn, err := net.Dial("tcp", targetIP)
 	if err != nil {
 		fmt.Printf("conn server failed, err:%v\n", err)
 		return
 	}
 
+	defer conn.Close()
 	var msg proto.Msg
 	var user_id uint32
+	var receiver_id uint32
 	login_status := false
-	input := bufio.NewReader(os.Stdin)
+	msgs := make(chan string, 1)
 
 	//开始登陆
 	for !login_status {
 		fmt.Println("输入账号密码")
 
 		//账号
-		s, _ := input.ReadString('\n')
-		s = strings.TrimSpace(s)
-		if strings.ToUpper(s) == "Q" {
-			return
-		}
-		msg1 := []byte(s)
-		msg.Write(conn, 1, 1, msg1, 1)
+		msg.Write(conn, 1, 1, []byte(ReadFromBufWithoutExit(input)), proto.FLAG_LOGIN)
 
 		//密码
-		s, _ = input.ReadString('\n')
-		s = strings.TrimSpace(s)
-		if strings.ToUpper(s) == "Q" {
-			return
-		}
-		msg1 = []byte(s)
-		msg.Write(conn, 0, 0, msg1, 1)
+		msg.Write(conn, 0, 0, []byte(ReadFromBufWithoutExit(input)), proto.FLAG_LOGIN)
 
 		msg.Read(conn)
-		if !login_status && msg.Sender == 0 && msg.Flags == 2 {
+		if !login_status && msg.Sender == 0 && msg.Flags == proto.FLAG_SUCCESS {
 			fmt.Println("登陆成功")
 			tempId, _ := strconv.Atoi(string(msg.Data))
 			user_id = uint32(tempId)
+
+			//退出前给服务端发送通知，之后删
+			defer msg.Write(conn, user_id, proto.Server.Id, []byte(""), proto.FLAG_DISCONNECT)
+
 			fmt.Println("用户id:", user_id)
 			login_status = true
-		} else if !login_status && msg.Sender == 0 && msg.Flags == 3 {
+		} else if !login_status && msg.Sender == 0 && msg.Flags == proto.FLAG_FAILURE {
 			fmt.Println("登陆失败")
 			fmt.Println(string(msg.Data))
 		}
 	}
 
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+
+	//监听来自服务器消息
 	go func() {
 		for {
-			msg.Read(conn)
+			exit := msg.Read(conn)
+			if !exit {
+				sigs <- syscall.SIGINT
+				fmt.Println("已与服务器断开连接")
+				return
+			}
 			if msg.Sender == 0 {
 				fmt.Printf("系统信息：%v\n", string(msg.Data))
-			} else if msg.Flags == 11 {
+			} else if msg.Flags == proto.FLAG_TEXT {
 				fmt.Println(string(msg.Data))
 			}
 		}
 	}()
 
+	//记录通信方账号
+	fmt.Println("通信方账号：")
+	tempId, _ := strconv.Atoi(ReadFromBufWithoutExit(input))
+	receiver_id = uint32(tempId)
+
+	//开启键盘监听
+	go ReadFromBuf(input, msgs)
+
+	//主协程发送消息、处理错误
+	for {
+		select {
+		case send_msg, ok := <-msgs:
+			if !ok {
+				return
+			}
+			msg.Write(conn, user_id, receiver_id, []byte(send_msg), proto.FLAG_TEXT)
+		case <-sigs:
+			return
+		}
+	}
+}
+
+func ReadFromBufWithoutExit(input *bufio.Reader) string {
+	s, _ := input.ReadString('\n')
+	s = strings.TrimSpace(s)
+	return s
+}
+
+func ReadFromBuf(input *bufio.Reader, msgs chan string) {
 	for {
 		s, _ := input.ReadString('\n')
 		s = strings.TrimSpace(s)
 		if strings.ToUpper(s) == "Q" {
+			close(msgs)
 			return
+		} else {
+			msgs <- s
 		}
-
-		msg1 := []byte(s)
-		msg.Write(conn, user_id, proto.User2.Id, msg1, 11)
-
 	}
 }

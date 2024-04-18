@@ -31,7 +31,7 @@ func process(ctx context.Context, conn net.Conn) {
 		msg.Read(conn)
 		user.Passwd = string(msg.Data)
 
-		fmt.Printf("%+v", user)
+		fmt.Printf("登陆用户：%+v\n", user)
 		status, logs := proto.Login(user)
 		if !status {
 			msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte(logs), proto.FLAG_FAILURE)
@@ -57,8 +57,6 @@ func process(ctx context.Context, conn net.Conn) {
 		default:
 			msg.Read(conn)
 
-			fmt.Println(msg)
-
 			if msg.Flags == proto.FLAG_DISCONNECT {
 				fmt.Println(msg.Sender, "断开连接")
 				return
@@ -76,8 +74,9 @@ func process(ctx context.Context, conn net.Conn) {
 }
 
 func main() {
+	port := 9091
 	// 建立 tcp 服务
-	listen, err := net.Listen("tcp", "0.0.0.0:9091")
+	listen, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%v", port))
 	if err != nil {
 		fmt.Printf("listen failed, err:%v\n", err)
 		return
@@ -92,7 +91,7 @@ func main() {
 	for _, addr := range addrs {
 		ip, _, err := net.ParseCIDR(addr.String())
 		if err == nil && ip.IsGlobalUnicast() {
-			fmt.Println("IP Address:", ip)
+			fmt.Println("IP Address:", ip, ":", port)
 		}
 	}
 
