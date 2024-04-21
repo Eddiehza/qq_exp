@@ -82,7 +82,7 @@ func main() {
 			} else if msg.Flags == proto.FLAG_TEXT {
 				fmt.Println(string(msg.Data))
 			} else if msg.Flags == proto.FLAG_FILE {
-				fmt.Println("文件已接收")
+				fmt.Println(string((msg.Data)))
 			}
 		}
 	}()
