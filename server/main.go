@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
+	"os"
 	"strconv"
 
 	"exp/proto"
@@ -55,22 +57,45 @@ func process(ctx context.Context, conn net.Conn) {
 		case <-ctx.Done():
 			return
 		default:
-			msg.Read(conn)
-
-			if msg.Flags == proto.FLAG_DISCONNECT {
+			exit := msg.Read(conn)
+			if !exit {
+				return
+			}
+			switch msg.Flags {
+			case proto.FLAG_DISCONNECT:
 				fmt.Println(msg.Sender, "断开连接")
 				return
-			} else if receiver_conn, ok := user_tcp_chat.Load(msg.Receiver); !ok {
-				msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte("对方未登陆！"), proto.FLAG_UNREACHABLE)
-			} else {
-				if receiver_conn, ok := receiver_conn.(net.Conn); ok {
-					msg.Write(receiver_conn, msg.Sender, msg.Receiver, msg.Data, proto.FLAG_TEXT)
+			case proto.FLAG_FILE:
+				fileName, err := handleFileReceive(msg)
+				if err != nil {
+					log.Printf("Error receiving file: %v\n", err)
+					msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte("文件接收失败"), proto.FLAG_FAILURE)
+					return
+				}
+
+				// 构造文件已保存的确认消息，包括文件名
+				confirmationMsg := fmt.Sprintf("文件已保存到: %s", fileName)
+
+				if receiverConn, ok := user_tcp_chat.Load(msg.Receiver); ok {
+					if conn, ok := receiverConn.(net.Conn); ok {
+						msg.Write(conn, msg.Sender, msg.Receiver, []byte(confirmationMsg), proto.FLAG_FILE)
+					}
+				} else {
+					msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte(confirmationMsg), proto.FLAG_FILE)
+				}
+
+			case proto.FLAG_TEXT:
+				if receiver_conn, ok := user_tcp_chat.Load(msg.Receiver); ok {
+					if receiver_conn, ok := receiver_conn.(net.Conn); ok {
+						msg.Write(receiver_conn, msg.Sender, msg.Receiver, msg.Data, proto.FLAG_TEXT)
+					}
+				} else {
+					msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte("对方未登录！"), proto.FLAG_UNREACHABLE)
 				}
 			}
 		}
-
-		//将接受到的数据返回给客户端
 	}
+
 }
 
 func main() {
@@ -110,4 +135,28 @@ func main() {
 
 		go process(ctx, conn)
 	}
+}
+
+func handleFileReceive(msg proto.Msg) (string, error) {
+	// 构造文件名，这里使用发送者ID和".dat"后缀
+	filename := "received_" + strconv.Itoa(int(msg.Sender)) + ".dat"
+
+	// 创建文件
+	file, err := os.Create(filename)
+	if err != nil {
+		log.Println("创建文件失败:", err)
+		return "", err // 返回空文件名和错误信息
+	}
+	defer file.Close()
+
+	// 将接收到的数据写入文件
+	_, err = file.Write(msg.Data)
+	if err != nil {
+		log.Println("写入文件失败:", err)
+		return filename, err // 返回文件名和错误信息
+	}
+
+	// 成功的情况，返回文件名和nil表示没有错误
+	fmt.Println("文件接收并保存为:", filename)
+	return filename, nil
 }
