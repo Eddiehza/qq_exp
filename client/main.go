@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"os/signal"
@@ -80,6 +81,8 @@ func main() {
 				fmt.Printf("系统信息：%v\n", string(msg.Data))
 			} else if msg.Flags == proto.FLAG_TEXT {
 				fmt.Println(string(msg.Data))
+			} else if msg.Flags == proto.FLAG_FILE {
+				fmt.Println("文件已接收")
 			}
 		}
 	}()
@@ -95,12 +98,19 @@ func main() {
 	//主协程发送消息、处理错误
 	for {
 		select {
-		case send_msg, ok := <-msgs:
+		case sendMsg, ok := <-msgs:
 			if !ok {
 				return
 			}
-			msg.Write(conn, user_id, receiver_id, []byte(send_msg), proto.FLAG_TEXT)
+			if strings.HasPrefix(sendMsg, "sendfile ") {
+				filePath := strings.TrimPrefix(sendMsg, "sendfile ")
+				go SendFile(conn, 1, receiver_id, filePath) // Assuming sendFile is defined
+			} else {
+				var msg proto.Msg
+				msg.Write(conn, 1, receiver_id, []byte(sendMsg), proto.FLAG_TEXT)
+			}
 		case <-sigs:
+			fmt.Println("收到中断信号")
 			return
 		}
 	}
@@ -122,5 +132,43 @@ func ReadFromBuf(input *bufio.Reader, msgs chan string) {
 		} else {
 			msgs <- s
 		}
+	}
+}
+
+func SendFile(conn net.Conn, senderId uint32, receiverId uint32, filePath string) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		log.Println("无法打开文件:", err)
+		return
+	}
+	defer file.Close()
+
+	fileInfo, err := file.Stat()
+	if err != nil {
+		log.Println("无法获得文件信息:", err)
+		return
+	}
+
+	// 读取文件内容到缓冲区
+	data := make([]byte, fileInfo.Size())
+	_, err = file.Read(data)
+	if err != nil {
+		log.Println("无法读取文件:", err)
+		return
+	}
+
+	// 设置消息标志为文件传输
+	msg := proto.Msg{
+		Sender:   senderId,
+		Receiver: receiverId,
+		Flags:    proto.FLAG_FILE,
+		Data:     data,
+	}
+
+	// 发送消息
+	marshaledMsg := msg.Marshal()
+	_, err = conn.Write(marshaledMsg)
+	if err != nil {
+		log.Println("文件发送失败:", err)
 	}
 }
