@@ -166,7 +166,6 @@ func SendFile(conn net.Conn, senderId uint32, receiverId uint32, filePath string
 	}
 
 	// 发送消息
-	//marshaledMsg := msg.Marshal()
 	msg.Write(conn, senderId, receiverId, data, proto.FLAG_FILE)
 
 }

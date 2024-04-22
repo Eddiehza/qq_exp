@@ -156,7 +156,7 @@ func handleFileReceive(msg proto.Msg) (string, error) {
 		return filename, err // 返回文件名和错误信息
 	}
 
-	// 成功的情况，返回文件名和nil表示没有错误
+	// 成功，返回文件名和nil表示没有错误
 	fmt.Println("文件接收并保存为:", filename)
 	return filename, nil
 }
