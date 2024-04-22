@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"os/signal"
@@ -33,6 +32,7 @@ func main() {
 
 	defer conn.Close()
 	var msg proto.Msg
+	var file proto.File
 	var user_id uint32
 	var receiver_id uint32
 	login_status := false
@@ -104,7 +104,7 @@ func main() {
 			}
 			if strings.HasPrefix(sendMsg, "sendfile ") {
 				filePath := strings.TrimPrefix(sendMsg, "sendfile ")
-				go SendFile(conn, 1, receiver_id, filePath) // Assuming sendFile is defined
+				go file.Send(conn, 1, receiver_id, filePath) // Assuming sendFile is defined
 			} else {
 				var msg proto.Msg
 				msg.Write(conn, 1, receiver_id, []byte(sendMsg), proto.FLAG_TEXT)
@@ -133,39 +133,4 @@ func ReadFromBuf(input *bufio.Reader, msgs chan string) {
 			msgs <- s
 		}
 	}
-}
-
-func SendFile(conn net.Conn, senderId uint32, receiverId uint32, filePath string) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		log.Println("无法打开文件:", err)
-		return
-	}
-	defer file.Close()
-
-	fileInfo, err := file.Stat()
-	if err != nil {
-		log.Println("无法获得文件信息:", err)
-		return
-	}
-
-	// 读取文件内容到缓冲区
-	data := make([]byte, fileInfo.Size())
-	_, err = file.Read(data)
-	if err != nil {
-		log.Println("无法读取文件:", err)
-		return
-	}
-
-	// 设置消息标志为文件传输
-	msg := proto.Msg{
-		Sender:   senderId,
-		Receiver: receiverId,
-		Flags:    proto.FLAG_FILE,
-		Data:     data,
-	}
-
-	// 发送消息
-	msg.Write(conn, senderId, receiverId, data, proto.FLAG_FILE)
-
 }
