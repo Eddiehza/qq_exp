@@ -71,12 +71,19 @@ func (f *File) Receive(msg Msg) (string, error) {
 		return "", err
 	}
 
-	// 使用原始文件名创建文件
-	filename := receivedFile.Filename
-	file, err := os.Create(filename)
+	// 确保目标路径存在
+	targetPath := fmt.Sprintf("/files/%d", msg.Receiver)
+	if err := os.MkdirAll(targetPath, 0755); err != nil {
+		log.Println("创建目标目录失败:", err)
+		return "", err
+	}
+
+	// 使用原始文件名创建文件，保存在指定的目录
+	fullPath := filepath.Join(targetPath, filepath.Base(receivedFile.Filename))
+	file, err := os.Create(fullPath)
 	if err != nil {
 		log.Println("创建文件失败:", err)
-		return "", err // 返回空文件名和错误信息
+		return "", err
 	}
 	defer file.Close()
 
@@ -84,10 +91,62 @@ func (f *File) Receive(msg Msg) (string, error) {
 	_, err = file.Write(receivedFile.Data)
 	if err != nil {
 		log.Println("写入文件失败:", err)
-		return filename, err // 返回文件名和错误信息
+		return fullPath, err
 	}
 
-	// 成功，打印信息并返回文件名和nil表示没有错误
-	fmt.Println("文件接收并保存为:", filename)
-	return filename, nil
+	fmt.Println("文件接收并保存为:", fullPath)
+	return fullPath, nil
+}
+
+func (f File) ServerSend(user_id uint32, conn net.Conn) {
+	dirPath := fmt.Sprintf("/files/%d", user_id)
+	files, err := os.ReadDir(dirPath)
+	if err != nil {
+		//fmt.Printf("服务器无用户待接收文件 %d: %v", user_id, err)
+		return
+	}
+
+	for _, file := range files {
+		filePath := filepath.Join(dirPath, file.Name())
+		if _, err := os.Stat(filePath); err == nil {
+			f.Send(conn, Server.Id, user_id, filePath)
+		}
+	}
+
+}
+
+func (f *File) ClientReceive(msg Msg) (string, error) {
+	// 首先，解析消息中的文件数据
+	var receivedFile File
+	err := json.Unmarshal(msg.Data, &receivedFile)
+	if err != nil {
+		log.Println("解析文件数据失败:", err)
+		return "", err
+	}
+
+	// 确保目标路径存在
+	targetPath := "/clientfile"
+	if err := os.MkdirAll(targetPath, 0755); err != nil {
+		log.Println("创建目标目录失败:", err)
+		return "", err
+	}
+
+	// 使用原始文件名创建文件，保存在指定的目录
+	fullPath := filepath.Join(targetPath, filepath.Base(receivedFile.Filename))
+	file, err := os.Create(fullPath)
+	if err != nil {
+		log.Println("创建文件失败:", err)
+		return "", err
+	}
+	defer file.Close()
+
+	// 将接收到的数据写入文件
+	_, err = file.Write(receivedFile.Data)
+	if err != nil {
+		log.Println("写入文件失败:", err)
+		return fullPath, err
+	}
+
+	fmt.Println("文件接收并保存为:", fullPath)
+	return fullPath, nil
 }

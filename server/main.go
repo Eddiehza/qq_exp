@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"path/filepath"
 	"strconv"
 
 	"exp/proto"
@@ -43,13 +44,14 @@ func process(ctx context.Context, conn net.Conn) {
 			break
 		}
 	}
-	//用户上线时可能需要传递离线的文件等等
 
 	_, ok := user_tcp_chat.Load(user_id)
 	if !ok {
 		user_tcp_chat.Store(user_id, conn)
 		defer user_tcp_chat.Delete(user_id)
 	}
+	//用户上线时检查是否有离线的文件，有则发送
+	file.ServerSend(user_id, conn)
 
 	// 针对当前连接做发送和接受操作
 	for {
@@ -82,7 +84,7 @@ func process(ctx context.Context, conn net.Conn) {
 						msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte("文件接收失败"), proto.FLAG_FAILURE)
 						return
 					}
-					confirmationMsg := fmt.Sprintf("对方未登录！%s已保存到服务器", fileName)
+					confirmationMsg := fmt.Sprintf("对方未登录！%s已保存到服务器", filepath.Base(fileName))
 					msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte(confirmationMsg), proto.FLAG_UNREACHABLE)
 				}
 

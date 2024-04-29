@@ -69,6 +69,11 @@ func main() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 
+	//记录通信方账号
+	fmt.Println("通信方账号：")
+	tempId, _ := strconv.Atoi(ReadFromBufWithoutExit(input))
+	receiver_id = uint32(tempId)
+
 	//监听来自服务器消息
 	go func() {
 		for {
@@ -78,12 +83,17 @@ func main() {
 				fmt.Println("已与服务器断开连接")
 				return
 			}
-			if msg.Sender == 0 {
+			if msg.Sender == 0 && msg.Flags == proto.FLAG_FILE {
+				_, err := file.ClientReceive(msg)
+				if err != nil {
+					log.Printf("Error receiving file: %v\n", err)
+				}
+			} else if msg.Sender == 0 {
 				fmt.Printf("系统信息：%v\n", string(msg.Data))
 			} else if msg.Flags == proto.FLAG_TEXT {
 				fmt.Println(string(msg.Data))
 			} else if msg.Flags == proto.FLAG_FILE {
-				_, err := file.Receive(msg)
+				_, err := file.ClientReceive(msg)
 				//fmt.Println(string((msg.Data)))
 				if err != nil {
 					log.Printf("Error receiving file: %v\n", err)
@@ -91,11 +101,6 @@ func main() {
 			}
 		}
 	}()
-
-	//记录通信方账号
-	fmt.Println("通信方账号：")
-	tempId, _ := strconv.Atoi(ReadFromBufWithoutExit(input))
-	receiver_id = uint32(tempId)
 
 	//开启键盘监听
 	go ReadFromBuf(input, msgs)
