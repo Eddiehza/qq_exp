@@ -28,17 +28,17 @@ type Msg struct {
 	//11是普通文字消息
 	Flags uint8 // 1
 	//若同一个人同时发送多个包，可以使用此序号代表文件
-	Id       uint8  // 1
-	Sender   uint32 // 4
-	Receiver uint32 // 4
-	Data     []byte // 4
+	Extra_info uint8  // 1
+	Sender     uint32 // 4
+	Receiver   uint32 // 4
+	Data       []byte // 4
 }
 
 func (msg Msg) Marshal() []byte {
 	buf := make([]byte, msg.Length)
 	binary.LittleEndian.PutUint64(buf, msg.Length)
 	buf[8] = byte(msg.Flags)
-	buf[9] = byte(msg.Id)
+	buf[9] = byte(msg.Extra_info)
 	binary.LittleEndian.PutUint32(buf[10:14], msg.Sender)
 	binary.LittleEndian.PutUint32(buf[14:18], msg.Receiver)
 	copy(buf[HEAD_LEN:], msg.Data)
@@ -49,7 +49,7 @@ func (msg Msg) Marshal() []byte {
 func (msg *Msg) Unmarshal(msg_byte []byte) {
 	msg.Length = binary.LittleEndian.Uint64(msg_byte[0:8])
 	msg.Flags = msg_byte[8]
-	msg.Id = msg_byte[9]
+	msg.Extra_info = msg_byte[9]
 	msg.Sender = binary.LittleEndian.Uint32(msg_byte[10:14])
 	msg.Receiver = binary.LittleEndian.Uint32(msg_byte[14:18])
 	msg.Data = make([]byte, msg.Length-HEAD_LEN)
@@ -59,7 +59,11 @@ func (msg *Msg) Unmarshal(msg_byte []byte) {
 func (msg *Msg) Write(conn net.Conn, senderId uint32, receiverId uint32, data []byte, flag uint8) {
 	msg.Length = uint64(HEAD_LEN + len(data))
 	msg.Flags = flag
-	msg.Id = 1 //随便设置的，之后改
+	//msg.Extra_info
+	// if flag == FILE  Extra_info = len of File Name
+	if flag != FLAG_FILE {
+		msg.Extra_info = 1
+	}
 	msg.Sender = senderId
 	msg.Receiver = receiverId
 	msg.Data = data

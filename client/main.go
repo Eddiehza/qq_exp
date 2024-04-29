@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"os/signal"
@@ -82,7 +83,11 @@ func main() {
 			} else if msg.Flags == proto.FLAG_TEXT {
 				fmt.Println(string(msg.Data))
 			} else if msg.Flags == proto.FLAG_FILE {
-				fmt.Println(string((msg.Data)))
+				_, err := file.Receive(msg)
+				//fmt.Println(string((msg.Data)))
+				if err != nil {
+					log.Printf("Error receiving file: %v\n", err)
+				}
 			}
 		}
 	}()
