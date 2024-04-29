@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"os"
 	"strconv"
 
 	"exp/proto"
@@ -19,6 +18,7 @@ func process(ctx context.Context, conn net.Conn) {
 	defer conn.Close()
 	var msg proto.Msg
 	var user proto.User
+	var file proto.File
 	var user_id uint32
 	for {
 		exit := msg.Read(conn)
@@ -66,7 +66,7 @@ func process(ctx context.Context, conn net.Conn) {
 				fmt.Println(msg.Sender, "断开连接")
 				return
 			case proto.FLAG_FILE:
-				fileName, err := handleFileReceive(msg)
+				fileName, err := file.Receive(msg)
 				if err != nil {
 					log.Printf("Error receiving file: %v\n", err)
 					msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte("文件接收失败"), proto.FLAG_FAILURE)
@@ -135,28 +135,4 @@ func main() {
 
 		go process(ctx, conn)
 	}
-}
-
-func handleFileReceive(msg proto.Msg) (string, error) {
-	// 构造文件名，这里使用发送者ID和".dat"后缀
-	filename := "received_" + strconv.Itoa(int(msg.Sender)) + ".dat"
-
-	// 创建文件
-	file, err := os.Create(filename)
-	if err != nil {
-		log.Println("创建文件失败:", err)
-		return "", err // 返回空文件名和错误信息
-	}
-	defer file.Close()
-
-	// 将接收到的数据写入文件
-	_, err = file.Write(msg.Data)
-	if err != nil {
-		log.Println("写入文件失败:", err)
-		return filename, err // 返回文件名和错误信息
-	}
-
-	// 成功，返回文件名和nil表示没有错误
-	fmt.Println("文件接收并保存为:", filename)
-	return filename, nil
 }
