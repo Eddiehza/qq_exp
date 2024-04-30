@@ -87,15 +87,12 @@ func (f *File) Receive(msg Msg, path string, target bool) (string, error) {
 			fmt.Println(err)
 		}
 	}
-<<<<<<< HEAD
 
 	filename := string(filenameBytes)
 	// if _, err := os.Stat(targetPath); os.IsNotExist(err) {
 	// 	log.Println("创建目标目录失败:", err)
 	// 	return "", err
 	// }
-=======
->>>>>>> 13664ad (feat: solve createfiles faiilure)
 
 	// 使用原始文件名创建文件，保存在指定的目录
 	fullPath := filepath.Join(targetPath, filepath.Base(filename))

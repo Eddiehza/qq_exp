@@ -1,5 +1,10 @@
 package proto
 
+import (
+	"crypto/md5"
+	"encoding/hex"
+)
+
 type User struct {
 	Id     uint32
 	Passwd string
@@ -21,10 +26,17 @@ var Server = User{
 	Id: 0,
 }
 
+func hashPassword(password string, salt string) string {
+	data := []byte(salt + password)
+	hash := md5.Sum(data)
+	return hex.EncodeToString(hash[:])
+}
+
 func Login(u User) (bool, string) {
 	for _, user := range user_db {
 		if user.Id == u.Id {
-			if user.Passwd == u.Passwd {
+			hashedPassword := hashPassword(u.Passwd, "some_salt")
+			if hashPassword(user.Passwd, "some_salt") == hashedPassword {
 				return true, ""
 			} else {
 				return false, "密码错误"
