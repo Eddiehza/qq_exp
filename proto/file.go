@@ -78,14 +78,24 @@ func (f *File) Receive(msg Msg, path string, target bool) (string, error) {
 	if target {
 		targetPath = fmt.Sprintf("%v", path)
 	} else {
-		targetPath = fmt.Sprintf("%v/%d", path, msg.Sender)
+		targetPath = fmt.Sprintf("%v/%d", path, msg.Receiver)
 	}
+	if _, err := os.Stat(targetPath); os.IsNotExist(err) {
+		fmt.Println("正在创建用户文件目录")
+		err := os.MkdirAll(targetPath, 0777)
+		if err != nil {
+			fmt.Println(err)
+		}
+	}
+<<<<<<< HEAD
 
 	filename := string(filenameBytes)
 	// if _, err := os.Stat(targetPath); os.IsNotExist(err) {
 	// 	log.Println("创建目标目录失败:", err)
 	// 	return "", err
 	// }
+=======
+>>>>>>> 13664ad (feat: solve createfiles faiilure)
 
 	// 使用原始文件名创建文件，保存在指定的目录
 	fullPath := filepath.Join(targetPath, filepath.Base(filename))
@@ -105,21 +115,4 @@ func (f *File) Receive(msg Msg, path string, target bool) (string, error) {
 
 	fmt.Println("文件接收并保存为:", fullPath)
 	return fullPath, nil
-}
-
-func (f File) ServerSend(user_id uint32, conn net.Conn) {
-	dirPath := fmt.Sprintf("/files/%d", user_id)
-	files, err := os.ReadDir(dirPath)
-	if err != nil {
-		//fmt.Printf("服务器无用户待接收文件 %d: %v", user_id, err)
-		return
-	}
-
-	for _, file := range files {
-		filePath := filepath.Join(dirPath, file.Name())
-		if _, err := os.Stat(filePath); err == nil {
-			f.Send(conn, Server.Id, user_id, filePath)
-		}
-	}
-
 }
