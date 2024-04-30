@@ -150,7 +150,7 @@ func main() {
 		fmt.Println("Error getting current directory:", err)
 		return
 	}
-	file_save_path = currentPath + "/public/client"
+	file_save_path = currentPath + "/public/server"
 	fmt.Println(file_save_path)
 
 	port := 9091

@@ -82,13 +82,6 @@ func (f *File) Receive(msg Msg, path string, target bool) (string, error) {
 	}
 
 	filename := string(filenameBytes)
-<<<<<<< HEAD
-	// if _, err := os.Stat(targetPath); os.IsNotExist(err) {
-	// 	log.Println("创建目标目录失败:", err)
-	// 	return "", err
-	// }
-=======
->>>>>>> 62dff21 (feat: add progressbar)
 
 	// 使用原始文件名创建文件，保存在指定的目录
 	fullPath := filepath.Join(targetPath, filepath.Base(filename))
