@@ -114,9 +114,12 @@ func main() {
 			if !ok {
 				return
 			}
-			if strings.HasPrefix(sendMsg, "sendfile ") {
-				filePath := strings.TrimPrefix(sendMsg, "sendfile ")
-				go file.Send(conn, 1, receiver_id, filePath) // Assuming sendFile is defined
+			if strings.HasPrefix(sendMsg, "sendfile") {
+				fields := strings.Fields(sendMsg)
+				if len(fields) > 1 && fields[0] == "sendfile" {
+					filePath := strings.Join(fields[1:], " ")
+					go file.Send(conn, 1, receiver_id, filePath)
+				}
 			} else {
 				var msg proto.Msg
 				msg.Write(conn, 1, receiver_id, []byte(sendMsg), proto.FLAG_TEXT)
