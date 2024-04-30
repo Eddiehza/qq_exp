@@ -13,6 +13,8 @@ import (
 )
 
 var user_tcp_chat sync.Map
+var offline_file sync.Map
+var file_save_path = "./public/server"
 
 func process(ctx context.Context, conn net.Conn) {
 	// 处理完关闭连接
@@ -50,7 +52,10 @@ func process(ctx context.Context, conn net.Conn) {
 		user_tcp_chat.Store(user_id, conn)
 		defer user_tcp_chat.Delete(user_id)
 	}
+
 	//用户上线时检查是否有离线的文件，有则发送
+	// offline_file.Range()
+
 	file.ServerSend(user_id, conn)
 
 	// 针对当前连接做发送和接受操作
@@ -78,13 +83,14 @@ func process(ctx context.Context, conn net.Conn) {
 						fmt.Printf("服务器转发文件到客户端 %v\n", msg.Receiver)
 					}
 				} else {
-					fileName, err := file.Receive(msg)
+					fileName, err := file.Receive(msg, file_save_path, true)
 					if err != nil {
 						log.Printf("Error receiving file: %v\n", err)
 						msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte("文件接收失败"), proto.FLAG_FAILURE)
 						return
 					}
 					confirmationMsg := fmt.Sprintf("对方未登录！%s已保存到服务器", filepath.Base(fileName))
+					offline_file.Store(msg.Receiver, fmt.Sprintf("%v/%v", msg.Receiver, filepath.Base(fileName)))
 					msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte(confirmationMsg), proto.FLAG_UNREACHABLE)
 				}
 

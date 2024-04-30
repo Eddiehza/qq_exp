@@ -14,6 +14,8 @@ import (
 	"exp/proto"
 )
 
+var file_save_path = "./public/client"
+
 func main() {
 
 	input := bufio.NewReader(os.Stdin)
@@ -84,7 +86,7 @@ func main() {
 				return
 			}
 			if msg.Sender == 0 && msg.Flags == proto.FLAG_FILE {
-				_, err := file.ClientReceive(msg)
+				_, err := file.Receive(msg, file_save_path, false)
 				if err != nil {
 					log.Printf("Error receiving file: %v\n", err)
 				}
@@ -93,7 +95,7 @@ func main() {
 			} else if msg.Flags == proto.FLAG_TEXT {
 				fmt.Println(string(msg.Data))
 			} else if msg.Flags == proto.FLAG_FILE {
-				_, err := file.ClientReceive(msg)
+				_, err := file.Receive(msg, file_save_path, false)
 				//fmt.Println(string((msg.Data)))
 				if err != nil {
 					log.Printf("Error receiving file: %v\n", err)
