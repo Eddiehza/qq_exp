@@ -73,8 +73,6 @@ func (f *File) Receive(msg Msg, path string, target bool) (string, error) {
 		return "", err
 	}
 
-	fmt.Println(receivedFile.Data)
-
 	// 确保目标路径存在
 	var targetPath string
 	if target {
@@ -82,11 +80,6 @@ func (f *File) Receive(msg Msg, path string, target bool) (string, error) {
 	} else {
 		targetPath = fmt.Sprintf("%v/%d", path, msg.Sender)
 	}
-
-	fmt.Println(targetPath)
-
-	a, err := os.Stat(targetPath)
-	fmt.Println(a)
 	// if _, err := os.Stat(targetPath); os.IsNotExist(err) {
 	// 	log.Println("创建目标目录失败:", err)
 	// 	return "", err

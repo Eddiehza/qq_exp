@@ -13,8 +13,13 @@ import (
 )
 
 var user_tcp_chat sync.Map
-var offline_file sync.Map
+var offline_files sync.Map
 var file_save_path = "./public/server"
+
+type file_abstract struct {
+	file_path string
+	senderId  uint32
+}
 
 func process(ctx context.Context, conn net.Conn) {
 	// 处理完关闭连接
@@ -54,9 +59,16 @@ func process(ctx context.Context, conn net.Conn) {
 	}
 
 	//用户上线时检查是否有离线的文件，有则发送
-	// offline_file.Range()
-
-	file.ServerSend(user_id, conn)
+	value, ok := offline_files.Load(user_id)
+	if ok {
+		fmt.Println(value)
+		for _, offline_file := range value.([]file_abstract) {
+			fmt.Println(offline_file.file_path)
+			fmt.Println(offline_file.senderId)
+			go file.Send(conn, offline_file.senderId, user_id, fmt.Sprintf("%v/%v", file_save_path, offline_file.file_path))
+		}
+		offline_files.Delete(user_id)
+	}
 
 	// 针对当前连接做发送和接受操作
 	for {
@@ -90,7 +102,29 @@ func process(ctx context.Context, conn net.Conn) {
 						return
 					}
 					confirmationMsg := fmt.Sprintf("对方未登录！%s已保存到服务器", filepath.Base(fileName))
-					offline_file.Store(msg.Receiver, fmt.Sprintf("%v/%v", msg.Receiver, filepath.Base(fileName)))
+
+					new_file := file_abstract{
+						file_path: filepath.Base(fileName),
+						senderId:  msg.Sender,
+					}
+					value, ok := offline_files.Load(msg.Receiver)
+					if !ok {
+						var save_files []file_abstract
+						save_files = append(save_files, new_file)
+						offline_files.Store(msg.Receiver, save_files)
+					} else {
+						existing_files, ok := value.([]file_abstract)
+						if !ok {
+							// 处理类型断言失败的情况
+							fmt.Println("转换失败")
+							return
+						}
+
+						// 将文件路径添加到现有的数组中
+						existing_files = append(existing_files, new_file)
+						offline_files.Store(msg.Receiver, existing_files)
+					}
+
 					msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte(confirmationMsg), proto.FLAG_UNREACHABLE)
 				}
 
