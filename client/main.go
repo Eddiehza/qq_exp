@@ -14,9 +14,16 @@ import (
 	"exp/proto"
 )
 
-var file_save_path = "./public/client"
+var file_save_path string
 
 func main() {
+
+	currentPath, err := os.Getwd()
+	if err != nil {
+		fmt.Println("Error getting current directory:", err)
+		return
+	}
+	file_save_path = currentPath + "/public/client"
 
 	input := bufio.NewReader(os.Stdin)
 	fmt.Println("服务器地址：")

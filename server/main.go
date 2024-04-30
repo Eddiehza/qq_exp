@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"path/filepath"
 	"strconv"
 
@@ -14,7 +15,7 @@ import (
 
 var user_tcp_chat sync.Map
 var offline_files sync.Map
-var file_save_path = "./public/server"
+var file_save_path string
 
 type file_abstract struct {
 	file_path string
@@ -143,6 +144,15 @@ func process(ctx context.Context, conn net.Conn) {
 }
 
 func main() {
+
+	currentPath, err := os.Getwd()
+	if err != nil {
+		fmt.Println("Error getting current directory:", err)
+		return
+	}
+	file_save_path = currentPath + "/public/client"
+	fmt.Println(file_save_path)
+
 	port := 9091
 	// 建立 tcp 服务
 	listen, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%v", port))

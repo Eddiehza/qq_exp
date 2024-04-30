@@ -62,13 +62,6 @@ func (f File) Send(conn net.Conn, senderId uint32, receiverId uint32, filePath s
 
 func (f *File) Receive(msg Msg, path string, target bool) (string, error) {
 	// 首先，解析消息中的文件数据
-	//var receivedFile File
-	//err := json.Unmarshal(msg.Data, &receivedFile)
-
-	//if err != nil {
-	//	log.Println("解析文件数据失败:", err)
-	//	return "", err
-	//}
 	filenameLen := int(msg.Extra_info)
 	filenameBytes := msg.Data[:filenameLen]
 	fileData := msg.Data[filenameLen:]
@@ -89,10 +82,13 @@ func (f *File) Receive(msg Msg, path string, target bool) (string, error) {
 	}
 
 	filename := string(filenameBytes)
+<<<<<<< HEAD
 	// if _, err := os.Stat(targetPath); os.IsNotExist(err) {
 	// 	log.Println("创建目标目录失败:", err)
 	// 	return "", err
 	// }
+=======
+>>>>>>> 62dff21 (feat: add progressbar)
 
 	// 使用原始文件名创建文件，保存在指定的目录
 	fullPath := filepath.Join(targetPath, filepath.Base(filename))

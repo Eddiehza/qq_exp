@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net"
+
+	"github.com/schollz/progressbar/v3"
 )
 
 const HEAD_LEN = 18
@@ -61,19 +63,43 @@ func (msg *Msg) Write(conn net.Conn, senderId uint32, receiverId uint32, data []
 	msg.Flags = flag
 	//msg.Extra_info
 	// if flag == FILE  Extra_info = len of File Name
-	if flag != FLAG_FILE {
-		msg.Extra_info = 1
-	}
 	msg.Sender = senderId
 	msg.Receiver = receiverId
 	msg.Data = data
 	marshal_msg := msg.Marshal()
 	// fmt.Printf("发送数据：%+v\n", msg)
-	_, err := conn.Write(marshal_msg)
-	if err != nil {
-		fmt.Printf("send failed, err:%v\n", err)
-		return
+
+	if flag == FLAG_FILE {
+		fmt.Println("开始传输文件")
+		totalBytes := len(marshal_msg)
+		percent := totalBytes / 100
+		bar := progressbar.Default(100)
+		for i := 0; i < 100; i++ {
+			start := int64(i) * int64(percent)
+			end := start + int64(percent)
+			if i == 99 {
+				end = int64(totalBytes)
+			}
+
+			partData := marshal_msg[start:end]
+
+			_, err := conn.Write(partData)
+			if err != nil {
+				fmt.Printf("send failed, err:%v\n", err)
+				return
+			}
+
+			bar.Add(1)
+		}
+
+	} else {
+		_, err := conn.Write(marshal_msg)
+		if err != nil {
+			fmt.Printf("send failed, err:%v\n", err)
+			return
+		}
 	}
+
 }
 
 func (msg *Msg) Read(conn net.Conn) bool {
