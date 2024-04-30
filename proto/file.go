@@ -1,7 +1,6 @@
 package proto
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -11,8 +10,8 @@ import (
 
 type File struct {
 	Filename string
-	FileType string
-	Data     []byte
+	//FileType string
+	Data []byte
 }
 
 func (f File) Send(conn net.Conn, senderId uint32, receiverId uint32, filePath string) {
@@ -39,15 +38,12 @@ func (f File) Send(conn net.Conn, senderId uint32, receiverId uint32, filePath s
 
 	// fmt.Println(f.Data)
 
-	f.Filename = filepath.Base(filePath)  // 提取文件名
-	f.FileType = filepath.Ext(f.Filename) // 提取文件扩展名
+	f.Filename = filepath.Base(filePath) // 提取文件名
+	//f.FileType = filepath.Ext(f.Filename) // 提取文件扩展名
+	filenameBytes := []byte(f.Filename)
 
-	// 将文件名、类型和数据封装成JSON
-	fileData, err := json.Marshal(f)
-	if err != nil {
-		log.Println("无法序列化文件数据:", err)
-		return
-	}
+	// 将文件名、分隔符和文件内容拼接在一起
+	fileData := append(filenameBytes, f.Data...)
 
 	// 设置消息标志为文件传输
 	msg := Msg{
@@ -66,12 +62,16 @@ func (f File) Send(conn net.Conn, senderId uint32, receiverId uint32, filePath s
 
 func (f *File) Receive(msg Msg, path string, target bool) (string, error) {
 	// 首先，解析消息中的文件数据
-	var receivedFile File
-	err := json.Unmarshal(msg.Data, &receivedFile)
-	if err != nil {
-		log.Println("解析文件数据失败:", err)
-		return "", err
-	}
+	//var receivedFile File
+	//err := json.Unmarshal(msg.Data, &receivedFile)
+
+	//if err != nil {
+	//	log.Println("解析文件数据失败:", err)
+	//	return "", err
+	//}
+	filenameLen := int(msg.Extra_info)
+	filenameBytes := msg.Data[:filenameLen]
+	fileData := msg.Data[filenameLen:]
 
 	// 确保目标路径存在
 	var targetPath string
@@ -80,13 +80,15 @@ func (f *File) Receive(msg Msg, path string, target bool) (string, error) {
 	} else {
 		targetPath = fmt.Sprintf("%v/%d", path, msg.Sender)
 	}
+
+	filename := string(filenameBytes)
 	// if _, err := os.Stat(targetPath); os.IsNotExist(err) {
 	// 	log.Println("创建目标目录失败:", err)
 	// 	return "", err
 	// }
 
 	// 使用原始文件名创建文件，保存在指定的目录
-	fullPath := filepath.Join(targetPath, filepath.Base(receivedFile.Filename))
+	fullPath := filepath.Join(targetPath, filepath.Base(filename))
 	file, err := os.Create(fullPath)
 	if err != nil {
 		log.Println("创建文件失败:", err)
@@ -95,7 +97,7 @@ func (f *File) Receive(msg Msg, path string, target bool) (string, error) {
 	defer file.Close()
 
 	// 将接收到的数据写入文件
-	_, err = file.Write(receivedFile.Data)
+	_, err = file.Write(fileData)
 	if err != nil {
 		log.Println("写入文件失败:", err)
 		return fullPath, err

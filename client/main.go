@@ -118,6 +118,8 @@ func main() {
 				fields := strings.Fields(sendMsg)
 				if len(fields) > 1 && fields[0] == "sendfile" {
 					filePath := strings.Join(fields[1:], " ")
+					// 去除路径两端的双引号
+					filePath = strings.Trim(filePath, "\"")
 					go file.Send(conn, 1, receiver_id, filePath)
 				}
 			} else {
