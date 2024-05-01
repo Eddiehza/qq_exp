@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"exp/proto"
 	"sync"
@@ -18,8 +19,10 @@ var offline_files sync.Map
 var file_save_path string
 
 type file_abstract struct {
-	file_path string
-	senderId  uint32
+	file_path    string
+	senderId     uint32
+	expired_time time.Time
+	received     bool
 }
 
 func process(ctx context.Context, conn net.Conn) {
@@ -67,10 +70,56 @@ func process(ctx context.Context, conn net.Conn) {
 			fmt.Println(offline_file.file_path)
 			fmt.Println(offline_file.senderId)
 			go file.Send(conn, offline_file.senderId, user_id, fmt.Sprintf("%v/%v", file_save_path, offline_file.file_path))
+			offline_file.received = true
 		}
 		offline_files.Delete(user_id)
 	}
 
+	go func() {
+		ticker := time.NewTicker(time.Minute) // 每分钟检查一次
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				offline_files.Range(func(key, value interface{}) bool {
+					files, ok := value.([]file_abstract)
+					if !ok {
+						return true
+					}
+
+					// 检查每个文件是否过期
+					for i, file := range files {
+						if time.Now().After(file.expired_time) {
+							// 如果文件过期，从 offline_files 中删除
+							files = append(files[:i], files[i+1:]...)
+							offline_files.Store(key, files)
+							if file.received {
+								// 从文件系统中删除文件
+								os.Remove(filepath.Join(file_save_path, file.file_path))
+							} else if !file.received {
+								// 通知发送方文件未接收
+								if senderConn, ok := user_tcp_chat.Load(file.senderId); ok {
+									if conn, ok := senderConn.(net.Conn); ok {
+										msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte("对方未接收文件"), proto.FLAG_UNREACHABLE)
+										os.Remove(filepath.Join(file_save_path, file.file_path))
+									}
+								} else if !ok {
+									// 如果发送方不在线,保留文件
+								}
+
+							}
+
+						}
+					}
+
+					return true
+				})
+			}
+		}
+	}()
 	// 针对当前连接做发送和接受操作
 	for {
 		select {
@@ -105,8 +154,10 @@ func process(ctx context.Context, conn net.Conn) {
 					confirmationMsg := fmt.Sprintf("对方未登录！%s已保存到服务器", filepath.Base(fileName))
 
 					new_file := file_abstract{
-						file_path: filepath.Base(fileName),
-						senderId:  msg.Sender,
+						file_path:    filepath.Base(fileName),
+						senderId:     msg.Sender,
+						expired_time: time.Now().Add(time.Hour * 24),
+						received:     false,
 					}
 					value, ok := offline_files.Load(msg.Receiver)
 					if !ok {
