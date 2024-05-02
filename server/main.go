@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log"
 	"net"
@@ -204,13 +205,21 @@ func main() {
 	file_save_path = currentPath + "/public/server"
 	fmt.Println(file_save_path)
 
-	port := 9091
-	// 建立 tcp 服务
-	listen, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%v", port))
+	// 加载服务器的证书和私钥
+	cert, err := tls.LoadX509KeyPair("server.crt", "server.key")
 	if err != nil {
-		fmt.Printf("listen failed, err:%v\n", err)
-		return
+		log.Fatalf("server: loadkeys: %s", err)
 	}
+	config := tls.Config{Certificates: []tls.Certificate{cert}}
+
+	// 创建一个TLS监听器
+	listen, err := tls.Listen("tcp", "0.0.0.0:9091", &config)
+	if err != nil {
+		log.Fatalf("server: listen: %s", err)
+	}
+	log.Print("server: listening")
+
+	port := 9091
 
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {

@@ -2,9 +2,9 @@ package main
 
 import (
 	"bufio"
+	"crypto/tls"
 	"fmt"
 	"log"
-	"net"
 	"os"
 	"os/signal"
 	"strconv"
@@ -34,7 +34,13 @@ func main() {
 
 	fmt.Println(targetIP)
 
-	conn, err := net.Dial("tcp", targetIP)
+	// 创建一个TLS配置
+	config := &tls.Config{
+		InsecureSkipVerify: true,
+	}
+
+	// 连接到服务器
+	conn, err := tls.Dial("tcp", targetIP, config)
 	if err != nil {
 		fmt.Printf("conn server failed, err:%v\n", err)
 		return
