@@ -2,6 +2,7 @@ package proto
 
 import (
 	"crypto/md5"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"math/rand"
@@ -18,6 +19,7 @@ type User struct {
 var user_db = []User{
 	{Id: 1, Passwd: "", Salt: ""},
 	{Id: 2, Passwd: "", Salt: ""},
+	{Id: 3, Passwd: "", Salt: ""},
 }
 
 var Server = User{
@@ -65,4 +67,21 @@ func Login(u User) (bool, string) {
 		}
 	}
 	return false, "未找到用户"
+}
+
+func GetFriends(u User) []byte {
+	var userId []uint32
+	for _, user := range user_db {
+		if user.Id != u.Id {
+			userId = append(userId, user.Id)
+		}
+	}
+	var byteSlice []byte
+	for _, id := range userId {
+		buf := make([]byte, 4)                 // 创建一个4字节的切片
+		binary.LittleEndian.PutUint32(buf, id) // 将uint32转换为字节切片
+		byteSlice = append(byteSlice, buf...)  // 将转换后的字节切片追加到byteSlice中
+	}
+
+	return byteSlice
 }

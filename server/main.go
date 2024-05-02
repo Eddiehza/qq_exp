@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -13,11 +15,21 @@ import (
 
 	"exp/proto"
 	"sync"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 var user_tcp_chat sync.Map
 var offline_files sync.Map
 var file_save_path string
+var db *sql.DB
+
+type msg_abstract struct {
+	Sender    uint32
+	Receiver  uint32
+	Content   string
+	CreatedAt string
+}
 
 type file_abstract struct {
 	file_path    string
@@ -39,12 +51,15 @@ func process(ctx context.Context, conn net.Conn) {
 			return
 		}
 		tempId, err := strconv.Atoi(string(msg.Data))
-		if err != nil {
-			msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte("输入有误"), proto.FLAG_FAILURE)
-		}
+
 		user.Id = uint32(tempId)
 		msg.Read(conn)
 		user.Passwd = string(msg.Data)
+
+		if err != nil {
+			msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte("输入有误"), proto.FLAG_FAILURE)
+			continue
+		}
 
 		fmt.Printf("登陆用户：%+v\n", user)
 		status, logs := proto.Login(user)
@@ -53,6 +68,7 @@ func process(ctx context.Context, conn net.Conn) {
 		} else {
 			user_id = user.Id
 			msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte(strconv.Itoa(int(user_id))), proto.FLAG_SUCCESS)
+			msg.Write(conn, proto.Server.Id, proto.Server.Id, proto.GetFriends(user), proto.FLAG_FRIEND_LIST)
 			break
 		}
 	}
@@ -121,6 +137,44 @@ func process(ctx context.Context, conn net.Conn) {
 			}
 		}
 	}()
+	//查询有没有离线消息，有则转发
+	rows, err := db.Query("SELECT receiver, sender, message, createdAt FROM messages WHERE receiver = ?", user_id)
+	if err != nil {
+		panic(err)
+	}
+	defer rows.Close()
+
+	var history_msgs []msg_abstract
+
+	for rows.Next() {
+		var history_msg msg_abstract
+		err := rows.Scan(&history_msg.Receiver, &history_msg.Sender, &history_msg.Content, &history_msg.CreatedAt)
+		if err != nil {
+			panic(err)
+		}
+		history_msgs = append(history_msgs, history_msg)
+	}
+	// fmt.Println(history_msgs)
+
+	jsonData, err := json.Marshal(history_msgs)
+	if err != nil {
+		fmt.Println("JSON encoding error:", err)
+		return
+	}
+
+	// 输出JSON格式的字节切片
+	// fmt.Println("JSON data:", string(jsonData))
+	byteData := []byte(jsonData)
+	msg.Write(conn, proto.Server.Id, proto.Server.Id, byteData, proto.FLAG_HISTORY_MSG)
+
+	//删除转发出去的
+	query := "DELETE FROM messages WHERE receiver = " + strconv.FormatUint(uint64(user_id), 10)
+	_, err = db.Exec(query)
+	if err != nil {
+		fmt.Println("删除数据失败:", err)
+		return
+	}
+
 	// 针对当前连接做发送和接受操作
 	for {
 		select {
@@ -136,9 +190,6 @@ func process(ctx context.Context, conn net.Conn) {
 				fmt.Println(msg.Sender, "断开连接")
 				return
 			case proto.FLAG_FILE:
-
-				// 构造文件已保存的确认消息，包括文件名
-				//confirmationMsg := fmt.Sprintf("文件已保存到: %s", fileName)
 
 				if receiverConn, ok := user_tcp_chat.Load(msg.Receiver); ok {
 					if conn, ok := receiverConn.(net.Conn); ok {
@@ -187,6 +238,13 @@ func process(ctx context.Context, conn net.Conn) {
 						msg.Write(receiver_conn, msg.Sender, msg.Receiver, msg.Data, proto.FLAG_TEXT)
 					}
 				} else {
+					// 插入数据
+					currentTime := time.Now()
+					createdAt := currentTime.Format("2006-01-02 15:04:05")
+					_, err := db.Exec("INSERT INTO messages (receiver, sender, message, createdAt) VALUES (?,?,?,?);", msg.Receiver, msg.Sender, msg.Data, createdAt)
+					if err != nil {
+						panic(err)
+					}
 					msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte("对方未登录！"), proto.FLAG_UNREACHABLE)
 				}
 			}
@@ -203,7 +261,21 @@ func main() {
 		return
 	}
 	file_save_path = currentPath + "/public/server"
-	fmt.Println(file_save_path)
+	// fmt.Println(file_save_path)
+
+	//连接数据库
+	db, err = sql.Open("sqlite3", file_save_path+"/server.db")
+	fmt.Println(file_save_path + "/server.db")
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+
+	// 创建表
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY,receiver TEXT,sender TEXT,message TEXT,createdAt DATETIME)")
+	if err != nil {
+		panic(err)
+	}
 
 	// 加载服务器的证书和私钥
 	cert, err := tls.LoadX509KeyPair("server.crt", "server.key")
