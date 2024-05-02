@@ -2,13 +2,10 @@ package main
 
 import (
 	"bufio"
-<<<<<<< HEAD
 	"crypto/tls"
-=======
 	"database/sql"
 	"encoding/binary"
 	"encoding/json"
->>>>>>> 7aad9bf (feat: big change)
 	"fmt"
 	"log"
 	"os"
