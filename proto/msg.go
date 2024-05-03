@@ -20,6 +20,7 @@ const (
 	FLAG_DISCONNECT
 	FLAG_FRIEND_LIST
 	FLAG_HISTORY_MSG
+	FLAG_FILE_SUCCESS
 
 	FLAG_TEXT = iota + 11
 	FLAG_FILE
@@ -72,7 +73,7 @@ func (msg *Msg) Write(conn net.Conn, senderId uint32, receiverId uint32, data []
 	// fmt.Printf("发送数据：%+v\n", msg)
 
 	if flag == FLAG_FILE {
-		fmt.Println("开始传输文件")
+		fmt.Println("file-info:transfer file")
 		totalBytes := len(marshal_msg)
 		percent := totalBytes / 100
 		bar := progressbar.Default(100)

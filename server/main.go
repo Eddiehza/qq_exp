@@ -28,6 +28,7 @@ type msg_abstract struct {
 	Sender    uint32
 	Receiver  uint32
 	Content   string
+	File      uint8
 	CreatedAt string
 }
 
@@ -123,12 +124,8 @@ func process(ctx context.Context, conn net.Conn) {
 										msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte("对方未接收文件"), proto.FLAG_UNREACHABLE)
 										os.Remove(filepath.Join(file_save_path, file.file_path))
 									}
-								} else if !ok {
-									// 如果发送方不在线,保留文件
 								}
-
 							}
-
 						}
 					}
 
@@ -138,7 +135,7 @@ func process(ctx context.Context, conn net.Conn) {
 		}
 	}()
 	//查询有没有离线消息，有则转发
-	rows, err := db.Query("SELECT receiver, sender, message, createdAt FROM messages WHERE receiver = ?", user_id)
+	rows, err := db.Query("SELECT receiver, sender, message, file, createdAt FROM messages WHERE receiver = ?", user_id)
 	if err != nil {
 		panic(err)
 	}
@@ -148,7 +145,7 @@ func process(ctx context.Context, conn net.Conn) {
 
 	for rows.Next() {
 		var history_msg msg_abstract
-		err := rows.Scan(&history_msg.Receiver, &history_msg.Sender, &history_msg.Content, &history_msg.CreatedAt)
+		err := rows.Scan(&history_msg.Receiver, &history_msg.Sender, &history_msg.Content, &history_msg.File, &history_msg.CreatedAt)
 		if err != nil {
 			panic(err)
 		}
@@ -192,9 +189,11 @@ func process(ctx context.Context, conn net.Conn) {
 			case proto.FLAG_FILE:
 
 				if receiverConn, ok := user_tcp_chat.Load(msg.Receiver); ok {
-					if conn, ok := receiverConn.(net.Conn); ok {
-						msg.Write(conn, msg.Sender, msg.Receiver, msg.Data, proto.FLAG_FILE)
+					if receive_conn, ok := receiverConn.(net.Conn); ok {
+						filename := file.GetName(msg)
+						msg.Write(receive_conn, msg.Sender, msg.Receiver, msg.Data, proto.FLAG_FILE)
 						fmt.Printf("服务器转发文件到客户端 %v\n", msg.Receiver)
+						msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte(filename+" "+strconv.FormatUint(uint64(msg.Receiver), 10)), proto.FLAG_FILE_SUCCESS)
 					}
 				} else {
 					fileName, err := file.Receive(msg, file_save_path, true)
@@ -203,8 +202,7 @@ func process(ctx context.Context, conn net.Conn) {
 						msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte("文件接收失败"), proto.FLAG_FAILURE)
 						return
 					}
-					confirmationMsg := fmt.Sprintf("对方未登录！%s已保存到服务器", filepath.Base(fileName))
-
+					// confirmationMsg := fmt.Sprintf("对方未登录！%s已保存到服务器", filepath.Base(fileName))
 					new_file := file_abstract{
 						file_path:    filepath.Base(fileName),
 						senderId:     msg.Sender,
@@ -229,7 +227,7 @@ func process(ctx context.Context, conn net.Conn) {
 						offline_files.Store(msg.Receiver, existing_files)
 					}
 
-					msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte(confirmationMsg), proto.FLAG_UNREACHABLE)
+					msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte(fileName+" "+strconv.FormatUint(uint64(msg.Receiver), 10)), proto.FLAG_FILE_SUCCESS)
 				}
 
 			case proto.FLAG_TEXT:
@@ -241,7 +239,7 @@ func process(ctx context.Context, conn net.Conn) {
 					// 插入数据
 					currentTime := time.Now()
 					createdAt := currentTime.Format("2006-01-02 15:04:05")
-					_, err := db.Exec("INSERT INTO messages (receiver, sender, message, createdAt) VALUES (?,?,?,?);", msg.Receiver, msg.Sender, msg.Data, createdAt)
+					_, err := db.Exec("INSERT INTO messages (receiver, sender, message, file, createdAt) VALUES (?,?,?,?,?);", msg.Receiver, msg.Sender, msg.Data, 0, createdAt)
 					if err != nil {
 						panic(err)
 					}
@@ -272,7 +270,7 @@ func main() {
 	defer db.Close()
 
 	// 创建表
-	_, err = db.Exec("CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY,receiver TEXT,sender TEXT,message TEXT,createdAt DATETIME)")
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY,receiver TEXT,sender TEXT,message TEXT,file INTEGER,createdAt DATETIME)")
 	if err != nil {
 		panic(err)
 	}

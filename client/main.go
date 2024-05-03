@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/tls"
 	"database/sql"
 	"encoding/binary"
@@ -26,6 +27,7 @@ type msg_abstract struct {
 	Sender    uint32
 	Receiver  uint32
 	Content   string
+	File      uint8
 	CreatedAt string
 }
 
@@ -99,13 +101,13 @@ func main() {
 
 	// 创建表
 	// fmt.Printf("CREATE TABLE IF NOT EXISTS %s (id INTEGER PRIMARY KEY,receiver TEXT,sender TEXT,message TEXT,createdAt DATETIME)", "user"+strconv.FormatUint(uint64(user_id), 10))
-	_, err = db.Exec(fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (id INTEGER PRIMARY KEY,receiver TEXT,sender TEXT,message TEXT,createdAt DATETIME)", "user"+strconv.FormatUint(uint64(user_id), 10)))
+	_, err = db.Exec(fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (id INTEGER PRIMARY KEY,receiver TEXT,sender TEXT,message TEXT,file INTEGER,createdAt DATETIME)", "user"+strconv.FormatUint(uint64(user_id), 10)))
 	if err != nil {
 		panic(err)
 	}
 
 	//查询有没有离线消息，有则转发
-	rows, err := db.Query(fmt.Sprintf("SELECT receiver, sender, message, createdAt FROM %s", "user"+strconv.FormatUint(uint64(user_id), 10)))
+	rows, err := db.Query(fmt.Sprintf("SELECT receiver, sender, message, file, createdAt FROM %s", "user"+strconv.FormatUint(uint64(user_id), 10)))
 	if err != nil {
 		panic(err)
 	}
@@ -115,7 +117,7 @@ func main() {
 
 	for rows.Next() {
 		var history_msg msg_abstract
-		err := rows.Scan(&history_msg.Receiver, &history_msg.Sender, &history_msg.Content, &history_msg.CreatedAt)
+		err := rows.Scan(&history_msg.Receiver, &history_msg.Sender, &history_msg.Content, &history_msg.File, &history_msg.CreatedAt)
 		if err != nil {
 			panic(err)
 		}
@@ -126,8 +128,8 @@ func main() {
 		fmt.Println("JSON encoding error:", err)
 		return
 	}
+	fmt.Printf("file-path:%v/%d\n", string(file_save_path), user_id)
 	fmt.Printf("local-history-msg:%v\n", string(jsonData))
-
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 
@@ -144,10 +146,19 @@ func main() {
 				fmt.Println("已与服务器断开连接")
 				return
 			}
-			if msg.Sender == 0 && msg.Flags == proto.FLAG_FILE {
+			if msg.Flags == proto.FLAG_FILE {
+				filename := file.GetName(msg)
 				_, err := file.Receive(msg, file_save_path, false)
 				if err != nil {
 					log.Printf("Error receiving file: %v\n", err)
+				}
+
+				currentTime := time.Now()
+				createdAt := currentTime.Format("2006-01-02 15:04:05")
+				query := "INSERT INTO " + "user" + strconv.FormatUint(uint64(user_id), 10) + " (receiver, sender, message, file, createdAt) VALUES (?, ?, ?, ?, ?)"
+				_, err = db.Exec(query, user_id, msg.Sender, filename, 1, createdAt)
+				if err != nil {
+					panic(err)
 				}
 			} else if msg.Flags == proto.FLAG_FRIEND_LIST {
 				var uint32Slice []uint32
@@ -165,11 +176,31 @@ func main() {
 					return
 				}
 				for _, singleMsg := range messages {
-					query := "INSERT INTO " + "user" + strconv.FormatUint(uint64(user_id), 10) + " (receiver, sender, message, createdAt) VALUES (?, ?, ?, ?)"
-					_, err := db.Exec(query, singleMsg.Receiver, singleMsg.Sender, singleMsg.Content, singleMsg.CreatedAt)
+					query := "INSERT INTO " + "user" + strconv.FormatUint(uint64(user_id), 10) + " (receiver, sender, message, file, createdAt) VALUES (?, ?, ?, ?, ?)"
+					_, err := db.Exec(query, singleMsg.Receiver, singleMsg.Sender, singleMsg.Content, 0, singleMsg.CreatedAt)
 					if err != nil {
 						panic(err)
 					}
+				}
+			} else if msg.Flags == proto.FLAG_FILE_SUCCESS {
+				fmt.Printf("file-success:%v\n", string(msg.Data))
+				//传成功了就落库
+				lastSpaceIndex := bytes.LastIndex(msg.Data, []byte(" "))
+				part1 := msg.Data[:lastSpaceIndex]
+				part2 := msg.Data[lastSpaceIndex+1:]
+				filename := string(part1)
+				num, err := strconv.Atoi(string(part2))
+				if err != nil {
+					fmt.Println("转换失败:", err)
+					return
+				}
+				receiverID := uint32(num)
+				currentTime := time.Now()
+				createdAt := currentTime.Format("2006-01-02 15:04:05")
+				query := "INSERT INTO " + "user" + strconv.FormatUint(uint64(user_id), 10) + " (receiver, sender, message, file, createdAt) VALUES (?, ?, ?, ?, ?)"
+				_, err = db.Exec(query, receiverID, user_id, filename, 1, createdAt)
+				if err != nil {
+					panic(err)
 				}
 			} else if msg.Sender == 0 {
 				fmt.Printf("系统信息：%v\n", string(msg.Data))
@@ -178,16 +209,10 @@ func main() {
 				//存入数据库里
 				currentTime := time.Now()
 				createdAt := currentTime.Format("2006-01-02 15:04:05")
-				query := "INSERT INTO " + "user" + strconv.FormatUint(uint64(user_id), 10) + " (receiver, sender, message, createdAt) VALUES (?, ?, ?, ?)"
-				_, err := db.Exec(query, msg.Receiver, msg.Sender, msg.Data, createdAt)
+				query := "INSERT INTO " + "user" + strconv.FormatUint(uint64(user_id), 10) + " (receiver, sender, message, file, createdAt) VALUES (?, ?, ?, ?, ?)"
+				_, err := db.Exec(query, msg.Receiver, msg.Sender, msg.Data, 0, createdAt)
 				if err != nil {
 					panic(err)
-				}
-			} else if msg.Flags == proto.FLAG_FILE {
-				_, err := file.Receive(msg, file_save_path, false)
-				//fmt.Println(string((msg.Data)))
-				if err != nil {
-					log.Printf("Error receiving file: %v\n", err)
 				}
 			}
 		}
@@ -224,8 +249,8 @@ func main() {
 				msg.Write(conn, user_id, receiver_id, []byte(sendMsg), proto.FLAG_TEXT)
 				currentTime := time.Now()
 				createdAt := currentTime.Format("2006-01-02 15:04:05")
-				query := "INSERT INTO " + "user" + strconv.FormatUint(uint64(user_id), 10) + " (receiver, sender, message, createdAt) VALUES (?, ?, ?, ?)"
-				_, err := db.Exec(query, msg.Receiver, msg.Sender, msg.Data, createdAt)
+				query := "INSERT INTO " + "user" + strconv.FormatUint(uint64(user_id), 10) + " (receiver, sender, message, file, createdAt) VALUES (?, ?, ?, ?, ?)"
+				_, err := db.Exec(query, msg.Receiver, msg.Sender, msg.Data, 0, createdAt)
 				if err != nil {
 					panic(err)
 				}
