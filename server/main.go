@@ -3,21 +3,23 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"exp/proto"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 
-	"exp/proto"
-	"sync"
+	"github.com/pion/stun"
 )
 
 var user_tcp_chat sync.Map
 var offline_files sync.Map
 var file_save_path string
+var userPublicAddresses sync.Map
 
 type file_abstract struct {
 	file_path    string
@@ -53,9 +55,56 @@ func process(ctx context.Context, conn net.Conn) {
 		} else {
 			user_id = user.Id
 			msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte(strconv.Itoa(int(user_id))), proto.FLAG_SUCCESS)
+
+			// 创建一个UDP连接
+			stunConn, err := net.Dial("udp", "stun.l.google.com:19302")
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			defer stunConn.Close()
+
+			// 创建一个STUN客户端
+			client, err := stun.NewClient(stunConn)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			// 创建一个STUN请求
+			message := stun.MustBuild(stun.TransactionID, stun.BindingRequest)
+
+			// 发送STUN请求
+			if err := client.Do(message, func(res stun.Event) {
+				if res.Error != nil {
+					fmt.Println("STUN request failed:", res.Error)
+					return
+				}
+
+				// 从STUN响应中获取公网地址
+				var xorAddr stun.XORMappedAddress
+				if err := xorAddr.GetFrom(res.Message); err != nil {
+					fmt.Println("Failed to get XOR-Mapped address:", err)
+					return
+				}
+
+				fmt.Printf("Public IP: %s, Public Port: %d\n", xorAddr.IP, xorAddr.Port)
+
+				// 将客户端的端口发送回客户端
+				msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte(strconv.Itoa(xorAddr.Port)), proto.FLAG_PORT)
+
+				// 存储地址
+				userPublicAddresses.Store(user_id, fmt.Sprintf("%s:%d", xorAddr.IP, xorAddr.Port))
+
+			}); err != nil {
+				fmt.Println("Failed to perform STUN request:", err)
+				return
+			}
+
 			break
 		}
 	}
+
+	defer userPublicAddresses.Delete(user_id)
 
 	_, ok := user_tcp_chat.Load(user_id)
 	if !ok {
@@ -181,6 +230,19 @@ func process(ctx context.Context, conn net.Conn) {
 					msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte(confirmationMsg), proto.FLAG_UNREACHABLE)
 				}
 
+			case proto.FLAG_P2P:
+				targetUserId, err := strconv.Atoi(string(msg.Data))
+				if err != nil {
+					msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte("输入有误"), proto.FLAG_FAILURE)
+				} else {
+					if targetPublicAddr, ok := userPublicAddresses.Load(uint32(targetUserId)); ok {
+						msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte(targetPublicAddr.(string)), proto.FLAG_P2P)
+					} else {
+						fmt.Println(targetUserId)
+						//fmt.Println(userPublicAddresses)
+						msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte("目标用户不在线"), proto.FLAG_FAILURE)
+					}
+				}
 			case proto.FLAG_TEXT:
 				if receiver_conn, ok := user_tcp_chat.Load(msg.Receiver); ok {
 					if receiver_conn, ok := receiver_conn.(net.Conn); ok {

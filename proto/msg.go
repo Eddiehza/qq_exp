@@ -21,6 +21,8 @@ const (
 
 	FLAG_TEXT = iota + 11
 	FLAG_FILE
+	FLAG_P2P
+	FLAG_PORT
 )
 
 type Msg struct {
