@@ -160,6 +160,14 @@ func main() {
 				if err != nil {
 					panic(err)
 				}
+			} else if msg.Flags == proto.FLAG_VIDEO {
+				fmt.Println(string(msg.Data))
+			} else if msg.Flags == proto.FLAG_VIDEO_REQUEST {
+				fmt.Println("video-initialize")
+			} else if msg.Flags == proto.FLAG_VIDEO_AGREE {
+				fmt.Println("video-agree")
+			} else if msg.Flags == proto.FLAG_VIDEO_FINISH {
+				fmt.Println("video-finish")
 			} else if msg.Flags == proto.FLAG_FRIEND_LIST {
 				var uint32Slice []uint32
 				for i := 0; i < len(msg.Data); i += 4 {
@@ -244,6 +252,15 @@ func main() {
 					filePath = strings.Trim(filePath, "\"")
 					go file.Send(conn, user_id, receiver_id, filePath)
 				}
+			} else if strings.HasPrefix(sendMsg, "sendvideo") {
+				var msg proto.Msg
+				msg.Write(conn, user_id, receiver_id, []byte(sendMsg), proto.FLAG_VIDEO)
+			} else if strings.HasPrefix(sendMsg, "requestvideo") {
+				var msg proto.Msg
+				msg.Write(conn, user_id, receiver_id, []byte(sendMsg), proto.FLAG_VIDEO_REQUEST)
+			} else if strings.HasPrefix(sendMsg, "endvideo") {
+				var msg proto.Msg
+				msg.Write(conn, user_id, receiver_id, []byte(sendMsg), proto.FLAG_VIDEO_FINISH)
 			} else {
 				var msg proto.Msg
 				msg.Write(conn, user_id, receiver_id, []byte(sendMsg), proto.FLAG_TEXT)
