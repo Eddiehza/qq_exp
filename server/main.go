@@ -245,7 +245,37 @@ func process(ctx context.Context, conn net.Conn) {
 					}
 					msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte("对方未登录！"), proto.FLAG_UNREACHABLE)
 				}
+
+			case proto.FLAG_VIDEO_REQUEST:
+				//!记得这里加一下允不允许视频
+				if receiver_conn, ok := user_tcp_chat.Load(msg.Receiver); ok {
+					if receiver_conn, ok := receiver_conn.(net.Conn); ok {
+						msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte("接通中"), proto.FLAG_VIDEO_AGREE)
+						msg.Write(receiver_conn, msg.Sender, msg.Receiver, []byte("接通中"), proto.FLAG_VIDEO_REQUEST)
+					}
+				} else {
+					msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte("对方未登录！"), proto.FLAG_UNREACHABLE)
+				}
+
+			case proto.FLAG_VIDEO_FINISH:
+				if receiver_conn, ok := user_tcp_chat.Load(msg.Receiver); ok {
+					if receiver_conn, ok := receiver_conn.(net.Conn); ok {
+						msg.Write(receiver_conn, msg.Sender, msg.Receiver, []byte("结束通话中"), proto.FLAG_VIDEO_FINISH)
+					}
+				} else {
+					msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte("对方未登录！"), proto.FLAG_UNREACHABLE)
+				}
+
+			case proto.FLAG_VIDEO:
+				if receiver_conn, ok := user_tcp_chat.Load(msg.Receiver); ok {
+					if receiver_conn, ok := receiver_conn.(net.Conn); ok {
+						msg.Write(receiver_conn, msg.Sender, msg.Receiver, msg.Data, proto.FLAG_VIDEO)
+					}
+				} else {
+					msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte("对方下线了！"), proto.FLAG_UNREACHABLE)
+				}
 			}
+
 		}
 	}
 
