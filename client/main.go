@@ -263,6 +263,9 @@ func main() {
 				msg.Write(conn, user_id, receiver_id, []byte(sendMsg), proto.FLAG_VIDEO_FINISH)
 			} else {
 				var msg proto.Msg
+				if string(sendMsg) == "" {
+					break
+				}
 				msg.Write(conn, user_id, receiver_id, []byte(sendMsg), proto.FLAG_TEXT)
 				currentTime := time.Now()
 				createdAt := currentTime.Format("2006-01-02 15:04:05")
