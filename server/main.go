@@ -231,6 +231,10 @@ func process(ctx context.Context, conn net.Conn) {
 				}
 
 			case proto.FLAG_TEXT:
+				if string(msg.Data) == "" {
+					break
+				}
+				fmt.Println("接收到:", string(msg.Data))
 				if receiver_conn, ok := user_tcp_chat.Load(msg.Receiver); ok {
 					if receiver_conn, ok := receiver_conn.(net.Conn); ok {
 						msg.Write(receiver_conn, msg.Sender, msg.Receiver, msg.Data, proto.FLAG_TEXT)
