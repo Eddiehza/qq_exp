@@ -74,11 +74,9 @@ func process(ctx context.Context, conn net.Conn) {
 		}
 	}
 
-	_, ok := user_tcp_chat.Load(user_id)
-	if !ok {
-		user_tcp_chat.Store(user_id, conn)
-		defer user_tcp_chat.Delete(user_id)
-	}
+	// _, ok := user_tcp_chat.Load(user_id)
+	user_tcp_chat.Store(user_id, conn)
+	defer user_tcp_chat.Delete(user_id)
 
 	//用户上线时检查是否有离线的文件，有则发送
 	value, ok := offline_files.Load(user_id)
@@ -256,6 +254,17 @@ func process(ctx context.Context, conn net.Conn) {
 					if receiver_conn, ok := receiver_conn.(net.Conn); ok {
 						msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte("接通中"), proto.FLAG_VIDEO_AGREE)
 						msg.Write(receiver_conn, msg.Sender, msg.Receiver, []byte("接通中"), proto.FLAG_VIDEO_REQUEST)
+					}
+				} else {
+					msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte("对方未登录！"), proto.FLAG_UNREACHABLE)
+				}
+
+			case proto.FLAG_PHONE_REQUEST:
+				//!记得这里加一下允不允许视频
+				if receiver_conn, ok := user_tcp_chat.Load(msg.Receiver); ok {
+					if receiver_conn, ok := receiver_conn.(net.Conn); ok {
+						msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte("接通中"), proto.FLAG_PHONE_AGREE)
+						msg.Write(receiver_conn, msg.Sender, msg.Receiver, []byte("接通中"), proto.FLAG_PHONE_REQUEST)
 					}
 				} else {
 					msg.Write(conn, proto.Server.Id, proto.Server.Id, []byte("对方未登录！"), proto.FLAG_UNREACHABLE)
