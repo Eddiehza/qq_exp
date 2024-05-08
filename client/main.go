@@ -164,6 +164,10 @@ func main() {
 				fmt.Println(string(msg.Data))
 			} else if msg.Flags == proto.FLAG_VIDEO_REQUEST {
 				fmt.Println("video-initialize")
+			} else if msg.Flags == proto.FLAG_PHONE_REQUEST {
+				fmt.Println("phone-initialize")
+			} else if msg.Flags == proto.FLAG_PHONE_AGREE {
+				fmt.Println("phone-agree")
 			} else if msg.Flags == proto.FLAG_VIDEO_AGREE {
 				fmt.Println("video-agree")
 			} else if msg.Flags == proto.FLAG_VIDEO_FINISH {
@@ -258,6 +262,9 @@ func main() {
 			} else if strings.HasPrefix(sendMsg, "requestvideo") {
 				var msg proto.Msg
 				msg.Write(conn, user_id, receiver_id, []byte(sendMsg), proto.FLAG_VIDEO_REQUEST)
+			} else if strings.HasPrefix(sendMsg, "requestphone") {
+				var msg proto.Msg
+				msg.Write(conn, user_id, receiver_id, []byte(sendMsg), proto.FLAG_PHONE_REQUEST)
 			} else if strings.HasPrefix(sendMsg, "endvideo") {
 				var msg proto.Msg
 				msg.Write(conn, user_id, receiver_id, []byte(sendMsg), proto.FLAG_VIDEO_FINISH)
